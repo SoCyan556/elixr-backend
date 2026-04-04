@@ -219,15 +219,22 @@ app.post("/auth/verify", async (req, res) => {
       },
     });
 
+    const rawText = await vrchatResponse.text();
+    console.log("VRChat auth status:", vrchatResponse.status);
+    console.log("VRChat auth raw response:", rawText);
+
     let vrchatData = {};
     try {
-      vrchatData = await vrchatResponse.json();
+    vrchatData = rawText ? JSON.parse(rawText) : {};
     } catch {
-      vrchatData = {};
+    vrchatData = {};
     }
 
     if (!vrchatResponse.ok) {
-      return res.status(401).json({ error: "Invalid VRChat session" });
+    return res.status(401).json({
+        error: "Invalid VRChat session",
+        vrchat_status: vrchatResponse.status,
+    });
     }
 
     const userId = normalizeUserId(vrchatData.id);
