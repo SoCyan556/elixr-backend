@@ -212,14 +212,17 @@ app.post("/auth/verify", async (req, res) => {
       return res.status(400).json({ error: "Missing auth cookie" });
     }
 
+    console.log("auth_cookie length:", authCookie.length);
+    console.log("auth_cookie preview:", authCookie ? authCookie.slice(0, 16) + "..." : "(empty)");
+
     const vrchatResponse = await fetch("https://api.vrchat.cloud/api/1/auth/user", {
-        method: "GET",
-        headers: {
-          "User-Agent": "ELIXRLauncher/1.0 (Render backend)",
-          "Cookie": `auth=${encodeURIComponent(authCookie)};`,
-          "Accept": "application/json",
-        },
-      });
+    method: "GET",
+    headers: {
+        "User-Agent": "ELIXRLauncher/1.0 (Render backend contact: admin@elixr.local)",
+        "Cookie": `auth=${authCookie};`,
+        "Accept": "application/json",
+    },
+    });
 
     const rawText = await vrchatResponse.text();
     console.log("VRChat auth status:", vrchatResponse.status);
@@ -238,9 +241,6 @@ app.post("/auth/verify", async (req, res) => {
         vrchat_status: vrchatResponse.status,
     });
     }
-
-    const userId = normalizeUserId(vrchatData.id);
-    const displayName = String(vrchatData.displayName || vrchatData.username || "").trim();
 
     if (!isValidVrchatUserId(userId)) {
       return res.status(400).json({ error: "Invalid VRChat user id from VRChat API" });
