@@ -216,7 +216,7 @@ app.post("/auth/verify", async (req, res) => {
         method: "GET",
         headers: {
           "User-Agent": "ELIXRLauncher/1.0 (Render backend)",
-          "Cookie": `auth=${authCookie};`,
+          "Cookie": `auth=${encodeURIComponent(authCookie)};`
           "Accept": "application/json",
         },
       });
