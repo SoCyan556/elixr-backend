@@ -205,19 +205,21 @@ app.get("/health", (req, res) => {
 app.post("/auth/verify", async (req, res) => {
   try {
     const authCookie = String(req.body?.auth_cookie || "").trim();
+    console.log("auth_cookie length:", authCookie.length);
+    console.log("auth_cookie preview:", authCookie ? authCookie.slice(0, 16) + "..." : "(empty)");
 
     if (!authCookie) {
       return res.status(400).json({ error: "Missing auth cookie" });
     }
 
     const vrchatResponse = await fetch("https://api.vrchat.cloud/api/1/auth/user", {
-      method: "GET",
-      headers: {
-        "User-Agent": "ELIXRLauncher/1.0",
-        "Cookie": `auth=${authCookie}`,
-        "Accept": "application/json",
-      },
-    });
+        method: "GET",
+        headers: {
+          "User-Agent": "ELIXRLauncher/1.0 (Render backend)",
+          "Cookie": `auth=${authCookie};`,
+          "Accept": "application/json",
+        },
+      });
 
     const rawText = await vrchatResponse.text();
     console.log("VRChat auth status:", vrchatResponse.status);
