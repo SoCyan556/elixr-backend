@@ -204,9 +204,29 @@ app.get("/creator/products", authRequired, requirePermission("launcher_creator")
 });
 
 app.post("/creator/module", authRequired, requirePermission("launcher_creator"), async (req, res) => {
-  const payload = req.body;
-  await supabase.from("launcher_products").insert(payload);
-  res.json({ ok: true });
+  try {
+    const payload = req.body;
+
+    console.log("CREATE PRODUCT PAYLOAD:", payload);
+
+    const { data, error } = await supabase
+      .from("launcher_products")
+      .insert([payload])
+      .select();
+
+    if (error) {
+      console.error("INSERT ERROR:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log("INSERT SUCCESS:", data);
+
+    res.json({ ok: true, data });
+
+  } catch (err) {
+    console.error("SERVER ERROR:", err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 app.post("/creator/module/update", authRequired, requirePermission("launcher_creator"), async (req, res) => {
