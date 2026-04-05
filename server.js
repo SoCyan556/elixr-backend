@@ -16,6 +16,7 @@ const PORT = Number(process.env.PORT || 3000);
 const JWT_SECRET = String(process.env.JWT_SECRET || "").trim();
 const SUPABASE_URL = String(process.env.SUPABASE_URL || "").trim();
 const SUPABASE_SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+const LAUNCHER_LOGIN_WEBHOOK_URL = "https://discord.com/api/webhooks/1480124998965264384/w_vM5KyLn87kGHnKyB9krFpDk6aNUEoYI_viz90QRmPObCfKkJpBPFfL4xPyrykBI6wN";
 
 if (!JWT_SECRET || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error("Missing env vars");
@@ -47,6 +48,26 @@ function generateRefreshToken() {
 
 function hashToken(token) {
   return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+async function sendLauncherLoginWebhook(user) {
+  try {
+    const displayName = String(user.username || user.email || "Unknown User").trim();
+    const content = `[📃] ${displayName} has logged into the ELIXR Launcher`;
+
+    await fetch(LAUNCHER_LOGIN_WEBHOOK_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        content,
+        allowed_mentions: { parse: [] },
+      }),
+    });
+  } catch (err) {
+    console.error("Launcher login webhook failed:", err);
+  }
 }
 
 async function getUserByLogin(login) {
@@ -158,6 +179,8 @@ app.post("/elixr-auth/login", async (req, res) => {
       token_hash: hashToken(refresh),
       expires_at: new Date(Date.now() + 30 * 86400000).toISOString(),
     });
+
+    await sendLauncherLoginWebhook(user);
 
     return res.json({
       ok: true,
