@@ -207,11 +207,16 @@ app.post("/creator/module", authRequired, requirePermission("launcher_creator"),
   try {
     const payload = req.body;
 
-    console.log("CREATE PRODUCT PAYLOAD:", payload);
+    const row = {
+      ...payload,
+      created_by: req.auth.elixr_user_id,
+    };
+
+    console.log("CREATE PRODUCT PAYLOAD:", row);
 
     const { data, error } = await supabase
       .from("launcher_products")
-      .insert([payload])
+      .insert([row])
       .select();
 
     if (error) {
@@ -220,9 +225,7 @@ app.post("/creator/module", authRequired, requirePermission("launcher_creator"),
     }
 
     console.log("INSERT SUCCESS:", data);
-
     res.json({ ok: true, data });
-
   } catch (err) {
     console.error("SERVER ERROR:", err);
     res.status(500).json({ error: "Server error" });
