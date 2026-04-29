@@ -203,6 +203,8 @@ app.get("/elixr-auth/me", authRequired, async (req, res) => {
       id: user.id,
       email: user.email,
       username: user.username,
+      display_name: user.display_name || user.username,
+      avatar_url: user.avatar_url || "",
       groups,
     },
   });
