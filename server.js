@@ -210,6 +210,58 @@ app.get("/elixr-auth/me", authRequired, async (req, res) => {
   });
 });
 
+app.post("/elixr-auth/change-password", authRequired, async (req, res) => {
+  try {
+    const currentPassword = String(req.body.current_password || "");
+    const newPassword = String(req.body.new_password || "");
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: "Missing current or new password" });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: "New password must be at least 8 characters" });
+    }
+
+    const user = await getUserByLogin(req.auth.email);
+    if (!user) {
+      return res.status(401).json({ error: "Invalid session" });
+    }
+
+    const valid = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!valid) {
+      return res.status(401).json({ error: "Current password is incorrect" });
+    }
+
+    const samePassword = await bcrypt.compare(newPassword, user.password_hash);
+    if (samePassword) {
+      return res.status(400).json({ error: "New password must be different from current password" });
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 12);
+
+    const { error } = await supabase
+      .from("elixr_users")
+      .update({ password_hash: newHash })
+      .eq("id", user.id);
+
+    if (error) {
+      console.error(error);
+      return res.status(500).json({ error: "Failed to update password" });
+    }
+
+    await supabase
+      .from("elixr_refresh_tokens")
+      .delete()
+      .eq("user_id", user.id);
+
+    return res.json({ ok: true, message: "Password updated successfully" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Password update failed" });
+  }
+});
+
 // =========================
 // PRODUCTS
 // =========================
