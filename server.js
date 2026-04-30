@@ -136,9 +136,15 @@ app.post("/elixr-auth/register", async (req, res) => {
     const email = normalize(req.body.email);
     const username = normalize(req.body.username);
     const password = String(req.body.password || "");
+    const tosAccepted = req.body.tos_accepted === true;
+    const tosVersion = String(req.body.tos_version || "1.0").trim();
 
     if (!email || !username || password.length < 8) {
       return res.status(400).json({ error: "Invalid input" });
+    }
+
+    if (!tosAccepted) {
+      return res.status(400).json({ error: "You must accept the Terms of Service" });
     }
 
     const hash = await bcrypt.hash(password, 12);
@@ -149,6 +155,8 @@ app.post("/elixr-auth/register", async (req, res) => {
         email,
         username,
         password_hash: hash,
+        tos_accepted_at: new Date().toISOString(),
+        tos_version: tosVersion,
       })
       .select("*")
       .limit(1);
