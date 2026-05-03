@@ -515,6 +515,99 @@ app.get("/api/credits", async (req, res) => {
   }
 });
 
+// =========================
+// ADMIN CREDITS
+// =========================
+
+app.post("/api/admin/credits/section", authRequired, requirePermission("launcher_creator"), async (req, res) => {
+  try {
+    const name = String(req.body.name || "").trim();
+
+    if (!name) {
+      return res.status(400).json({ ok: false, error: "Section name required" });
+    }
+
+    const { error } = await supabase
+      .from("credit_sections")
+      .insert({
+        name,
+        sort_order: Number(req.body.sort_order || 0),
+      });
+
+    if (error) throw error;
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("[CREATE CREDIT SECTION ERROR]", err);
+    return res.status(500).json({ ok: false, error: "Failed to create section" });
+  }
+});
+
+app.post("/api/admin/credits/member", authRequired, requirePermission("launcher_creator"), async (req, res) => {
+  try {
+    const sectionId = String(req.body.section_id || "").trim();
+    const username = String(req.body.username || "").trim().toLowerCase();
+    const title = String(req.body.title || "").trim();
+    const note = String(req.body.note || "").trim();
+
+    if (!sectionId || !username) {
+      return res.status(400).json({ ok: false, error: "Section and username required" });
+    }
+
+    const { data: userRows, error: userError } = await supabase
+      .from("elixr_users")
+      .select("id,username,email")
+      .or(`username.eq.${username},email.eq.${username}`)
+      .limit(1);
+
+    if (userError) throw userError;
+
+    const user = userRows?.[0];
+    if (!user) {
+      return res.status(404).json({ ok: false, error: "User not found" });
+    }
+
+    const { error } = await supabase
+      .from("credits")
+      .insert({
+        section_id: sectionId,
+        user_id: user.id,
+        title,
+        note,
+        sort_order: Number(req.body.sort_order || 0),
+      });
+
+    if (error) throw error;
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("[ADD CREDIT MEMBER ERROR]", err);
+    return res.status(500).json({ ok: false, error: "Failed to add credit member" });
+  }
+});
+
+app.delete("/api/admin/credits/member", authRequired, requirePermission("launcher_creator"), async (req, res) => {
+  try {
+    const id = String(req.body.id || "").trim();
+
+    if (!id) {
+      return res.status(400).json({ ok: false, error: "Credit id required" });
+    }
+
+    const { error } = await supabase
+      .from("credits")
+      .delete()
+      .eq("id", id);
+
+    if (error) throw error;
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("[REMOVE CREDIT MEMBER ERROR]", err);
+    return res.status(500).json({ ok: false, error: "Failed to remove credit member" });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`ELIXR API running on ${PORT}`);
 });
