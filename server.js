@@ -434,6 +434,87 @@ app.post("/creator/module/delete", authRequired, requirePermission("launcher_cre
   res.json({ ok: true });
 });
 
+app.get("/api/credits", async (req, res) => {
+  try {
+    const { data: sections, error: sectionError } = await supabase
+      .from("credit_sections")
+      .select("id,name,sort_order")
+      .order("sort_order", { ascending: true });
+
+    if (sectionError) throw sectionError;
+
+    const { data: rows, error: creditsError } = await supabase
+      .from("credits")
+      .select(`
+        id,
+        section_id,
+        title,
+        note,
+        sort_order,
+        user:elixr_users (
+          id,
+          username,
+          display_name,
+          avatar_url
+        )
+      `)
+      .order("sort_order", { ascending: true });
+
+    if (creditsError) throw creditsError;
+
+    const userIds = [...new Set((rows || []).map(r => r.user?.id).filter(Boolean))];
+
+    let groupRows = [];
+    if (userIds.length) {
+      const { data, error } = await supabase
+        .from("elixr_group_members")
+        .select("user_id,group_id")
+        .in("user_id", userIds);
+
+      if (error) throw error;
+      groupRows = data || [];
+    }
+
+    const groupMap = new Map();
+    for (const row of groupRows) {
+      if (!groupMap.has(row.user_id)) groupMap.set(row.user_id, []);
+      groupMap.get(row.user_id).push(row.group_id);
+    }
+
+    const membersBySection = new Map();
+
+    for (const row of rows || []) {
+      const user = row.user || {};
+      const member = {
+        id: row.id,
+        user_id: user.id || "",
+        username: user.display_name || user.username || "Unknown",
+        avatar_url: user.avatar_url || "",
+        groups: groupMap.get(user.id) || [],
+        title: row.title || "",
+        note: row.note || "",
+        sort_order: row.sort_order || 0
+      };
+
+      if (!membersBySection.has(row.section_id)) membersBySection.set(row.section_id, []);
+      membersBySection.get(row.section_id).push(member);
+    }
+
+    return res.json({
+      ok: true,
+      sections: (sections || []).map(section => ({
+        id: section.id,
+        name: section.name,
+        sort_order: section.sort_order || 0,
+        members: membersBySection.get(section.id) || []
+      }))
+    });
+  } catch (err) {
+    console.error("[CREDITS ERROR]", err);
+    return res.status(500).json({ ok: false, error: "Failed to load credits", sections: [] });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`ELIXR API running on ${PORT}`);
 });
