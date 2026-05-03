@@ -50,6 +50,19 @@ function hashToken(token) {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
 
+async function getSiteSetting(key, fallback = true) {
+  const { data, error } = await supabase
+    .from("site_settings")
+    .select("value")
+    .eq("key", key)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) return fallback;
+
+  return data.value === true || data.value === "true";
+}
+
 async function sendLauncherLoginWebhook(user) {
   try {
     const displayName = String(user.username || user.email || "Unknown User").trim();
@@ -57,9 +70,7 @@ async function sendLauncherLoginWebhook(user) {
 
     await fetch(LAUNCHER_LOGIN_WEBHOOK_URL, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         content,
         allowed_mentions: { parse: [] },
@@ -93,7 +104,7 @@ async function getUserGroups(userId) {
 }
 
 function buildPermissions(groups) {
-  const g = groups.map(x => x.toLowerCase());
+  const g = groups.map(x => String(x || "").toLowerCase());
 
   return {
     launcher_creator: g.includes("admin") || g.includes("administrators"),
@@ -128,11 +139,82 @@ function requirePermission(key) {
 app.get("/health", (req, res) => res.json({ ok: true }));
 
 // =========================
+// SITE SETTINGS
+// =========================
+
+app.get("/api/site-settings", async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("site_settings")
+      .select("key,value");
+
+    if (error) throw error;
+
+    const settings = {};
+    for (const row of data || []) {
+      settings[row.key] = row.value === true || row.value === "true";
+    }
+
+    return res.json({
+      ok: true,
+      settings: {
+        downloads_enabled: settings.downloads_enabled ?? true,
+        account_creation_enabled: settings.account_creation_enabled ?? true,
+      },
+    });
+  } catch (err) {
+    console.error("[SITE SETTINGS ERROR]", err);
+    return res.status(500).json({ ok: false, error: "Failed to load site settings" });
+  }
+});
+
+app.post(
+  "/api/admin/site-settings",
+  authRequired,
+  requirePermission("launcher_creator"),
+  async (req, res) => {
+    try {
+      const allowedKeys = new Set([
+        "downloads_enabled",
+        "account_creation_enabled",
+      ]);
+
+      const updates = req.body || {};
+
+      for (const [key, value] of Object.entries(updates)) {
+        if (!allowedKeys.has(key)) continue;
+
+        const { error } = await supabase
+          .from("site_settings")
+          .upsert({
+            key,
+            value: Boolean(value),
+            updated_at: new Date().toISOString(),
+          });
+
+        if (error) throw error;
+      }
+
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[ADMIN SITE SETTINGS ERROR]", err);
+      return res.status(500).json({ ok: false, error: "Failed to update site settings" });
+    }
+  }
+);
+
+// =========================
 // AUTH
 // =========================
 
 app.post("/elixr-auth/register", async (req, res) => {
   try {
+    const accountCreationEnabled = await getSiteSetting("account_creation_enabled", true);
+
+    if (!accountCreationEnabled) {
+      return res.status(403).json({ error: "Account creation is currently disabled" });
+    }
+
     const email = normalize(req.body.email);
     const username = normalize(req.body.username);
     const password = String(req.body.password || "");
@@ -147,9 +229,19 @@ app.post("/elixr-auth/register", async (req, res) => {
       return res.status(400).json({ error: "You must accept the Terms of Service" });
     }
 
+    const existing = await getUserByLogin(email);
+    if (existing) {
+      return res.status(409).json({ error: "Email or username already exists" });
+    }
+
+    const existingUsername = await getUserByLogin(username);
+    if (existingUsername) {
+      return res.status(409).json({ error: "Email or username already exists" });
+    }
+
     const hash = await bcrypt.hash(password, 12);
 
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from("elixr_users")
       .insert({
         email,
@@ -157,9 +249,7 @@ app.post("/elixr-auth/register", async (req, res) => {
         password_hash: hash,
         tos_accepted_at: new Date().toISOString(),
         tos_version: tosVersion,
-      })
-      .select("*")
-      .limit(1);
+      });
 
     if (error) {
       console.error("[SUPABASE REGISTER ERROR]", error);
@@ -170,14 +260,8 @@ app.post("/elixr-auth/register", async (req, res) => {
   } catch (err) {
     console.error("[REGISTER ERROR FULL]", err);
 
-    const message =
-      err?.message ||
-      err?.details ||
-      err?.hint ||
-      "Register failed";
-
     return res.status(500).json({
-      error: message,
+      error: err?.message || "Register failed",
       code: err?.code || null,
       details: err?.details || null,
       hint: err?.hint || null,
@@ -217,20 +301,27 @@ app.post("/elixr-auth/login", async (req, res) => {
 });
 
 app.get("/elixr-auth/me", authRequired, async (req, res) => {
-  const user = await getUserByLogin(req.auth.email);
-  const groups = await getUserGroups(user.id);
+  try {
+    const user = await getUserByLogin(req.auth.email);
+    if (!user) return res.status(401).json({ error: "Invalid session" });
 
-  return res.json({
-    ok: true,
-    user: {
-      id: user.id,
-      email: user.email,
-      username: user.username,
-      display_name: user.display_name || user.username,
-      avatar_url: user.avatar_url || "",
-      groups,
-    },
-  });
+    const groups = await getUserGroups(user.id);
+
+    return res.json({
+      ok: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        display_name: user.display_name || user.username,
+        avatar_url: user.avatar_url || "",
+        groups,
+      },
+    });
+  } catch (err) {
+    console.error("[ME ERROR]", err);
+    return res.status(500).json({ error: "Failed to load user" });
+  }
 });
 
 app.post("/elixr-auth/change-password", authRequired, async (req, res) => {
