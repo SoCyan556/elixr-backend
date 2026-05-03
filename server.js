@@ -161,7 +161,10 @@ app.post("/elixr-auth/register", async (req, res) => {
       .select("*")
       .limit(1);
 
-    if (error) throw error;
+    if (error) {
+      console.error("[SUPABASE REGISTER ERROR]", error);
+      throw error;
+    }
 
     return res.json({ ok: true });
   } catch (err) {
@@ -180,6 +183,7 @@ app.post("/elixr-auth/register", async (req, res) => {
       hint: err?.hint || null,
     });
   }
+});
 
 app.post("/elixr-auth/login", async (req, res) => {
   try {
