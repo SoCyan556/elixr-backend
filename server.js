@@ -443,37 +443,37 @@ app.get("/api/credits", async (req, res) => {
 
     if (sectionError) throw sectionError;
 
-    const { data: rows, error: creditsError } = await supabase
+    const { data: creditRows, error: creditsError } = await supabase
       .from("credits")
-      .select(`
-        id,
-        section_id,
-        title,
-        note,
-        sort_order,
-        user:elixr_users (
-          id,
-          username,
-          display_name,
-          avatar_url
-        )
-      `)
+      .select("id,section_id,user_id,title,note,sort_order")
       .order("sort_order", { ascending: true });
 
     if (creditsError) throw creditsError;
 
-    const userIds = [...new Set((rows || []).map(r => r.user?.id).filter(Boolean))];
+    const userIds = [...new Set((creditRows || []).map(r => r.user_id).filter(Boolean))];
 
+    let users = [];
     let groupRows = [];
+
     if (userIds.length) {
-      const { data, error } = await supabase
+      const { data: userData, error: userError } = await supabase
+        .from("elixr_users")
+        .select("id,username,display_name,avatar_url")
+        .in("id", userIds);
+
+      if (userError) throw userError;
+      users = userData || [];
+
+      const { data: groupsData, error: groupError } = await supabase
         .from("elixr_group_members")
         .select("user_id,group_id")
         .in("user_id", userIds);
 
-      if (error) throw error;
-      groupRows = data || [];
+      if (groupError) throw groupError;
+      groupRows = groupsData || [];
     }
+
+    const userMap = new Map(users.map(u => [u.id, u]));
 
     const groupMap = new Map();
     for (const row of groupRows) {
@@ -483,11 +483,13 @@ app.get("/api/credits", async (req, res) => {
 
     const membersBySection = new Map();
 
-    for (const row of rows || []) {
-      const user = row.user || {};
+    for (const row of creditRows || []) {
+      const user = userMap.get(row.user_id);
+      if (!user) continue;
+
       const member = {
         id: row.id,
-        user_id: user.id || "",
+        user_id: user.id,
         username: user.display_name || user.username || "Unknown",
         avatar_url: user.avatar_url || "",
         groups: groupMap.get(user.id) || [],
@@ -511,7 +513,11 @@ app.get("/api/credits", async (req, res) => {
     });
   } catch (err) {
     console.error("[CREDITS ERROR]", err);
-    return res.status(500).json({ ok: false, error: "Failed to load credits", sections: [] });
+    return res.status(500).json({
+      ok: false,
+      error: err?.message || "Failed to load credits",
+      sections: []
+    });
   }
 });
 
