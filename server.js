@@ -165,10 +165,21 @@ app.post("/elixr-auth/register", async (req, res) => {
 
     return res.json({ ok: true });
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Register failed" });
+    console.error("[REGISTER ERROR FULL]", err);
+
+    const message =
+      err?.message ||
+      err?.details ||
+      err?.hint ||
+      "Register failed";
+
+    return res.status(500).json({
+      error: message,
+      code: err?.code || null,
+      details: err?.details || null,
+      hint: err?.hint || null,
+    });
   }
-});
 
 app.post("/elixr-auth/login", async (req, res) => {
   try {
